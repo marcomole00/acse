@@ -125,6 +125,7 @@ extern void yyerror(const char*);
 %token RETURN
 %token READ
 %token WRITE
+%token REPLACE
 
 %token <label> DO
 %token <while_stmt> WHILE
@@ -248,6 +249,48 @@ statement   : assign_statement SEMI      { /* does nothing */ }
             | control_statement          { /* does nothing */ }
             | read_write_statement SEMI  { /* does nothing */ }
             | SEMI            { gen_nop_instruction(program); }
+            | replace_statement SEMI     { /* does nothing */ }
+;
+
+
+replace_statement : REPLACE LPAR IDENTIFIER COMMA  exp COMMA exp RPAR {
+
+         t_axe_variable *arr = getVariable(program, $3);
+
+         if (!arr->isArray){
+            yyerror("replace was used on a scalar value");
+         }
+
+         int r_index = gen_load_immediate(program, 0);
+         int r_arr_size = gen_load_immediate(program, arr->arraySize);
+
+         t_axe_label *skip_store_label = newLabel(program);
+         t_axe_label *start_label = assignNewLabel(program);
+         
+
+         int r_curr = loadArrayElement(program, $3, create_expression(r_index, REGISTER));
+
+         if ($5.expression_type == IMMEDIATE) {
+            gen_subi_instruction(program, REG_0, r_curr, $5.value);              // this sets the Z flag
+         } else {
+             gen_sub_instruction(program, REG_0, r_curr, $5.value,CG_DIRECT_ALL);// this sets the Z flag
+         }
+
+         gen_bne_instruction(program, skip_store_label,0); // if not equal, skip storearray
+
+         storeArrayElement(program, $3, create_expression(r_index, REGISTER), $7 );
+
+         assignLabel(program, skip_store_label);
+
+         //now increment index, and check it differs from arraysize
+
+         gen_addi_instruction(program, r_index, r_index, 1);
+         gen_subi_instruction(program, REG_0, r_index, arr->arraySize);
+         gen_blt_instruction(program, start_label, 0);
+
+         free($3);
+}
+
 ;
 
 control_statement : if_statement         { /* does nothing */ }

@@ -1,0 +1,21 @@
+int a[10], b=24;
+int i;
+
+i = 0;
+while (i < 10) {
+   a[i] = i + 1;
+   i = i + 1;
+}
+
+replace(a, b-17, 5);
+
+replace(a, 5, b/2);
+
+replace(a, (-b)*10, -24+b);
+
+/* a == {1, 2, 3, 4,12, 6,12, 8, 9,10}; */
+i = 0;
+while (i < 10) {
+   write(a[i]);
+   i = i + 1;
+}
