@@ -91,6 +91,10 @@ t_reg_allocator *RA;       /* Register allocator. It implements the "Linear
 t_io_infos *file_infos;    /* input and output files used by the compiler */
 
 
+t_list *assignVars = NULL;
+
+t_list *assignExps = NULL;
+
 extern int yylex(void);
 extern void yyerror(const char*);
 
@@ -260,6 +264,37 @@ read_write_statement : read_statement  { /* does nothing */ }
                      | write_statement { /* does nothing */ }
 ;
 
+
+
+assing_var_list: assing_var_list COMMA IDENTIFIER 
+            {
+               assignVars = addLast(assignVars, $3);
+
+            }
+            | IDENTIFIER 
+            {
+               assignVars = addLast(assignVars, $1);
+            }
+;
+
+assign_exp_list: assign_exp_list COMMA exp
+               {
+               /* the expression is declared locally to the semantic action.
+               We have to create a new pointer for it, as the local one will be deallocted
+               at the end of the semantic action.
+               */ 
+                  t_axe_expression *expp = malloc(sizeof(t_axe_expression));
+                  *expp = $3; 
+                  assignExps = addLast(assignExps, expp);
+               }
+               | exp 
+               {
+                  t_axe_expression *expp = malloc(sizeof(t_axe_expression));
+                  *expp = $1; 
+                  assignExps = addLast(assignExps, expp);
+
+               }
+
 assign_statement : IDENTIFIER LSQUARE exp RSQUARE ASSIGN exp
             {
                /* Notify to `program' that the value $6
@@ -277,37 +312,60 @@ assign_statement : IDENTIFIER LSQUARE exp RSQUARE ASSIGN exp
                 * by a call to the function `strdup' (see Acse.lex) */
                free($1);
             }
-            | IDENTIFIER ASSIGN exp
+            | assing_var_list ASSIGN assign_exp_list
             {
-               int location;
 
-               /* in order to assign a value to a variable, we have to
-                * know where the variable is located (i.e. in which register).
-                * the function `get_symbol_location' is used in order
-                * to retrieve the register location assigned to
-                * a given identifier.
-                * A symbol table keeps track of the location of every
-                * declared variable.
-                * `get_symbol_location' perform a query on the symbol table
-                * in order to discover the correct location of
-                * the variable with $1 as identifier */
-               
-               /* get the location of the symbol with the given ID. */
-               location = get_symbol_location(program, $1, 0);
+                 if (getLength(assignVars) != getLength(assignExps)) {
+                  yyerror("not enough variables or expressions");
+                  YYERROR;
+               }
 
-               /* update the value of location */
-               if ($3.expression_type == IMMEDIATE)
-                  gen_move_immediate(program, location, $3.value);
-               else
-                  gen_add_instruction(program,
-                                      location,
-                                      REG_0,
-                                      $3.value,
-                                      CG_DIRECT_ALL);
 
-               /* free the memory associated with the IDENTIFIER */
-               free($1);
-            }
+               /* Enumerate the variable identifier and expression lists in
+                * parallel and generate the code for each assignment. */
+               t_list *curVarItem = assignVars;
+               t_list *curExpItem = assignExps;
+
+               while(curVarItem) {
+
+                  char *ident = (char *)LDATA(curVarItem);
+                  t_axe_expression *expp = (t_axe_expression *)LDATA(curExpItem);
+
+                  int r_var = get_symbol_location(program, ident, 0);
+
+                  if (expp->expression_type == REGISTER) {
+                     gen_addi_instruction(program, r_var, expp->value, 0);
+                  } else {
+                     gen_move_immediate(program, r_var, expp->value);
+                  }
+
+                 curVarItem = curVarItem->next;
+                curExpItem = curExpItem->next;
+
+               }
+
+
+                        curVarItem = assignVars;
+               while (curVarItem) {
+                  free(LDATA(curVarItem));
+                  curVarItem = curVarItem->next;
+               }
+               /* Free the expressions in the list of expressions */
+               curExpItem=assignExps;
+               while (curExpItem) {
+                  free(LDATA(curExpItem));
+                  curExpItem = curExpItem->next;
+               }
+               /* Free the items in the lists */
+               freeList(assignVars);
+               freeList(assignExps);
+               /* Re-initialize the lists to prepare them for the next
+                * assignments */
+               assignVars = NULL;
+               assignExps = NULL;
+
+               }
+
 ;
             
 if_statement   : if_stmt
