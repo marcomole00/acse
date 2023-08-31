@@ -1,0 +1,25 @@
+int x = 128;
+int y = 125;
+
+select(0) {
+    case(2):
+        write(2);
+    case(1):
+        write(1);
+    case(0):
+        write(0);
+}
+
+// Should write 0
+
+select(x) {
+    case(y - 1):
+        write(0);
+    case(x):
+        x = x + 1;
+        write(1);
+    case(y + 3):
+        write(2);
+}
+
+// Should write 1 and 2

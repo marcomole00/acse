@@ -91,6 +91,9 @@ t_reg_allocator *RA;       /* Register allocator. It implements the "Linear
 t_io_infos *file_infos;    /* input and output files used by the compiler */
 
 
+t_axe_expression select_exp; /* the expression to be evualated by the current select stmnt */
+
+
 extern int yylex(void);
 extern void yyerror(const char*);
 
@@ -133,6 +136,9 @@ extern void yyerror(const char*);
 %token <intval> TYPE
 %token <svalue> IDENTIFIER
 %token <intval> NUMBER
+%token SELECT COLON
+%token <label >CASE
+
 
 %type <expr> exp
 %type <decl> declaration
@@ -248,7 +254,53 @@ statement   : assign_statement SEMI      { /* does nothing */ }
             | control_statement          { /* does nothing */ }
             | read_write_statement SEMI  { /* does nothing */ }
             | SEMI            { gen_nop_instruction(program); }
+            | select_statement {}
 ;
+
+
+select_statement: SELECT LPAR exp RPAR LBRACE {
+
+               if($3.expression_type == IMMEDIATE) {
+                  select_exp = $3;
+               } else {
+                  int r_temp = getNewRegister(program);
+                  gen_add_instruction(program, r_temp, REG_0, $3.value, CG_DIRECT_ALL);
+                  select_exp = create_expression(r_temp, REGISTER);
+                  //this way the expression value is blocked in time
+
+               }
+
+                  }
+                  case_statements RBRACE
+
+;
+
+
+case_statements : case_statements case_statement
+                  | case_statement
+
+;
+
+case_statement : CASE LPAR exp 
+               {
+                 /*the idea here is to use the CASE value has a place holder for a label that has creation 
+                  and assignment in two different semantic action ( i have to create it before the execution of the  statements, but i have to assign after them)
+                  */
+                  $1 = newLabel(program);
+                  t_axe_expression res = handle_binary_comparison(program, select_exp, $3, _EQ_);
+                  if (res.expression_type == IMMEDIATE) {
+                     if (res.value == 0) {
+                        gen_bt_instruction(program, $1, 0); // not equal, do a branch true
+                     }
+                  } else {
+                     gen_addi_instruction(program, REG_0, res.value, 0);
+                     gen_beq_instruction(program, $1, 0 );
+                  }
+
+               } 
+   RPAR COLON statements {
+      assignLabel(program, $1);
+   }
 
 control_statement : if_statement         { /* does nothing */ }
             | while_statement            { /* does nothing */ }
